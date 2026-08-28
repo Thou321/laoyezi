@@ -396,8 +396,9 @@
     $("#app").innerHTML =
       '<div class="bento fade-up">' +
         '<section class="bento-card bento-intro">' +
-          '<div class="intro-name">老叶子</div>' +
-          '<span class="intro-role">Agent 应用工程师</span>' +
+          '<div class="intro-eyebrow"><span class="signal-dot" aria-hidden="true"></span>AGENT SYSTEMS / ENGINEERING</div>' +
+          '<h1 class="intro-name">让智能体从 Demo<br><span>进入真实生产。</span></h1>' +
+          '<span class="intro-role">老叶子 · Agent 应用工程师</span>' +
           '<div class="intro-text">' +
             "<p>我是老叶子，一名专注于落地实践的 Agent 应用工程师。深耕大模型智能体开发、自动化工作流搭建、AI 工程化落地领域，专注把各类大模型能力从 demo 转化为可落地、可复用、高效率的工程化应用。</p>" +
             "<p>本站用于沉淀个人实战项目、技术复盘、踩坑经验与工程思考，记录 Agent 应用开发的成长轨迹，分享可落地、可复用的 AI 工程实践方案。</p>" +
