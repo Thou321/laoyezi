@@ -1,88 +1,48 @@
 /* ============================================================
-   老叶子 · Agent 应用工程师 —— CloudBase 数据源层（PostgreSQL 版）
-   公开读：直接调 CloudBase PG REST API（Publishable Key，默认 public schema）
-   管理写：调用 admin 云函数（云端 service_role 写，密码校验）
-   兜底：未配置 / 加载失败时返回 null，站点回退本地数据
+   老叶子 · Agent 应用工程师 —— 数据源层（HTTP 云函数版）
+   读 / 写统一走 admin 云函数的 HTTP 访问地址（纯 fetch，无 SDK、无 anon key）
+   - 读：action=read（公开）
+   - 写：action=list/create/update/remove（密码保护，函数内用 service_role 写库）
+   兜底：未配置 / 加载失败时返回 null，站点回退本地 data.js
    ============================================================ */
 window.CloudSource = (function () {
   "use strict";
 
   var cfg = window.SITE_CONFIG || {};
-  var ENV = (cfg.cloudbaseEnv || "").trim();
-  var ACCESS_KEY = (cfg.cloudbaseAccessKey || "").trim();
-  var app = null;
+  var FUNC_URL = (cfg.cloudbaseFunctionUrl || "").trim();
 
-  /* 公开读：只依赖 ENV + ACCESS_KEY（纯 fetch，不依赖 SDK）。
-     这样即使 CloudBase JS SDK（CDN）加载失败，首页仍能用云端数据，不会无声回退本地。 */
-  function readEnabled() {
-    return !!(ENV && ACCESS_KEY);
-  }
+  /* 是否已配置云端（只需函数地址） */
+  function enabled() { return !!FUNC_URL; }
+  function readEnabled() { return !!FUNC_URL; }
 
-  /* 管理写：额外需要 CloudBase JS SDK（window.cloudbase）来 callFunction */
-  function enabled() {
-    return !!(ENV && ACCESS_KEY && typeof window.cloudbase !== "undefined");
-  }
-
-  function init() {
-    if (app) return app;
-    if (!enabled()) return null;
-    app = window.cloudbase.init({ env: ENV, accessKey: ACCESS_KEY });
-    return app;
-  }
-
-  function restBase() {
-    return "https://" + ENV + ".api.tcloudbasegateway.com/v1/rdb/rest";
-  }
-
-  /* snake_case 行 -> 前端 camelCase 对象 */
-  function normalizeRow(row) {
-    return {
-      id: String(row.id),
-      type: row.type,
-      title: row.title,
-      summary: row.summary,
-      domain: row.domain,
-      difficulty: row.difficulty,
-      form: row.form,
-      freshness: row.freshness,
-      tags: row.tags || [],
-      date: row.date,
-      views: row.views || 0,
-      readTime: row.read_time || "",
-      featured: !!row.featured,
-      content: row.body || ""
-    };
-  }
-
-  /* 公开读：拉取全部内容，失败返回 null（触发本地兜底） */
-  async function fetchContent() {
-    if (!ENV) return null;
-    try {
-      var res = await fetch(restBase() + "/content", {
-        headers: { Authorization: "Bearer " + ACCESS_KEY }
-      });
-      if (!res.ok) return null;
-      var rows = await res.json();
-      if (Array.isArray(rows)) return rows.map(normalizeRow);
-      return [];
-    } catch (e) {
-      return null;
-    }
-  }
-
-  /* 管理写：统一走 admin 云函数（云端 service_role 写 + 密码校验） */
-  async function callAdmin(action, password, payload) {
-    var a = init();
-    if (!a) throw new Error("云端未配置，请先在 js/config.js 填写环境 ID 与 Key");
-    var r = await a.callFunction({
-      name: "admin",
-      data: Object.assign({ action: action, password: password }, payload || {})
+  /* 统一 POST 到云函数 */
+  async function post(action, payload) {
+    var r = await fetch(FUNC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Object.assign({ action: action }, payload || {}))
     });
-    var res = r && r.result;
-    if (!res || res.code !== 0) {
-      throw new Error((res && res.msg) || "操作失败");
-    }
+    if (!r.ok) throw new Error("网络错误 " + r.status);
+    var res = await r.json();
+    if (!res || res.code !== 0) throw new Error((res && res.msg) || "操作失败");
     return res;
+  }
+
+  /* 公开读：拉取全部内容（函数已返回 camelCase，直接可用） */
+  async function fetchContent() {
+    if (!FUNC_URL) return null;
+    try {
+      var res = await post("read");
+      return Array.isArray(res.data) ? res.data : [];
+    } catch (e) {
+      return null; /* 回退本地 */
+    }
+  }
+
+  /* 管理写：统一走云函数（密码在 payload 内传递） */
+  async function callAdmin(action, password, payload) {
+    if (!FUNC_URL) throw new Error("云端未配置，请先在 js/config.js 填写 cloudbaseFunctionUrl");
+    return await post(action, Object.assign({ password: password }, payload || {}));
   }
 
   return {
