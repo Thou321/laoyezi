@@ -42,7 +42,7 @@ window.Admin = (function () {
     return (
       '<div class="detail-wrap fade-up">' +
         '<h1 class="page-title">内容管理</h1>' +
-        '<div class="callout warn admin-callout">云端尚未配置。请先在 <code>js/config.js</code> 填入 CloudBase 环境 ID 与 Publishable Key，并在控制台部署 <code>admin</code> 云函数。详见 <code>DEPLOY.md</code>。</div>' +
+        '<div class="callout warn admin-callout">云端尚未配置。请先在 <code>js/config.js</code> 的 <code>cloudbaseFunctionUrl</code> 填入 <code>admin</code> 云函数的 HTTP 访问地址，并确认云函数已部署。详见 <code>DEPLOY.md</code>。</div>' +
         '<a class="empty-action" href="#/home">← 返回首页</a>' +
       "</div>"
     );
