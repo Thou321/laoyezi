@@ -629,7 +629,7 @@
     return Object.keys(s);
   }
   function applyRemoteData(arr) {
-    if (!arr || !arr.length) return;
+    if (!Array.isArray(arr)) return;
     DATA = arr;
     window.DATA = arr;
     ALL_TAGS = rebuildTags(arr);
@@ -638,7 +638,7 @@
     if (!window.CloudSource || !window.CloudSource.readEnabled()) return false;
     try {
       var remote = await window.CloudSource.fetchContent();
-      if (remote && remote.length) { applyRemoteData(remote); return true; }
+      if (Array.isArray(remote)) { applyRemoteData(remote); return true; }
     } catch (e) { /* 保持本地数据 */ }
     return false;
   }
@@ -655,6 +655,8 @@
 
   /* 暴露给管理页：保存/删除后刷新数据并回首页 */
   window.App = {
+    refreshData: loadRemoteData,
+    sanitizeContent: safeContent,
     refresh: async function () {
       await loadRemoteData();
       location.hash = "#/home";

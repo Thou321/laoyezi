@@ -85,11 +85,11 @@ window.Admin = (function () {
   }
 
   /* ---------- 数据 ---------- */
-  async function loadList() {
+  async function loadList(notice) {
     try {
       var res = await window.CloudSource.callAdmin("list", pwd, {});
       list = res.data || [];
-      renderList();
+      renderList(notice);
     } catch (e) {
       // 密码失效等
       sessionStorage.removeItem(PWD_KEY);
@@ -99,7 +99,7 @@ window.Admin = (function () {
   }
 
   /* ---------- 视图：列表 ---------- */
-  function renderList() {
+  function renderList(notice) {
     var rows = list.map(function (d) {
       var badge = d.type === "project"
         ? '<span class="type-badge project">项目</span>'
@@ -127,6 +127,7 @@ window.Admin = (function () {
           "</div>" +
         "</div>" +
         '<p class="page-desc">共 <strong>' + list.length + "</strong> 条内容，改动实时同步到线上。</p>" +
+        (notice ? '<div class="admin-notice" role="status">' + esc(notice) + "</div>" : "") +
         (list.length
           ? '<div class="admin-table-wrap"><table class="admin-table"><thead><tr>' +
             "<th>类型</th><th>标题</th><th>日期</th><th>操作</th></tr></thead><tbody>" + rows + "</tbody></table></div>"
@@ -150,6 +151,46 @@ window.Admin = (function () {
         if (confirm("确定删除这条内容？删除后不可恢复。")) doRemove(id);
       });
     });
+  }
+
+  function editorHtml(html) {
+    if (window.App && window.App.sanitizeContent) {
+      return window.App.sanitizeContent(html || "", "");
+    }
+    return "<p>" + esc(html || "") + "</p>";
+  }
+
+  function richEditorHtml(content) {
+    return (
+      '<div class="form-field full editor-field">' +
+        '<div class="editor-heading"><div><label>正文</label>' +
+          '<p>直接输入并排版，无需手写 HTML。</p></div>' +
+          '<div class="editor-modes" role="group" aria-label="编辑模式">' +
+            '<button type="button" class="active" data-editor-mode="visual">可视化</button>' +
+            '<button type="button" data-editor-mode="source">HTML</button>' +
+          "</div></div>" +
+        '<div class="rich-editor">' +
+          '<div class="editor-toolbar" id="editor-toolbar" role="toolbar" aria-label="正文格式工具">' +
+            '<select id="editor-format" aria-label="段落格式">' +
+              '<option value="p">正文</option><option value="h2">二级标题</option><option value="h3">三级标题</option>' +
+            "</select>" +
+            '<span class="editor-divider" aria-hidden="true"></span>' +
+            '<button type="button" data-editor-cmd="bold" aria-label="加粗"><strong>B</strong></button>' +
+            '<button type="button" data-editor-cmd="italic" aria-label="斜体"><em>I</em></button>' +
+            '<button type="button" data-editor-cmd="insertUnorderedList" aria-label="无序列表">• 列表</button>' +
+            '<button type="button" data-editor-cmd="insertOrderedList" aria-label="有序列表">1. 列表</button>' +
+            '<button type="button" data-editor-block="blockquote" aria-label="引用">引用</button>' +
+            '<button type="button" data-editor-block="pre" aria-label="代码块">代码</button>' +
+            '<button type="button" id="editor-link" aria-label="插入链接">链接</button>' +
+            '<button type="button" data-editor-cmd="removeFormat" aria-label="清除格式">清除格式</button>' +
+          "</div>" +
+          '<div id="f-content-editor" class="editor-canvas article-body" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="从这里开始写正文……">' +
+            editorHtml(content) +
+          "</div>" +
+          '<textarea id="f-content-source" class="f-input mono editor-source" rows="16" hidden aria-label="正文 HTML 源码">' + esc(content || "") + "</textarea>" +
+        "</div>" +
+      "</div>"
+    );
   }
 
   /* ---------- 视图：表单 ---------- */
@@ -183,7 +224,7 @@ window.Admin = (function () {
             formField("精选", '<label class="f-check"><input id="f-featured" type="checkbox"' + (d.featured ? " checked" : "") + "> 首页精选展示</label>") +
           "</div>" +
           '<div class="form-field full"><label>摘要</label><textarea id="f-summary" class="f-input" rows="3" placeholder="一句话摘要">' + esc(d.summary || "") + "</textarea></div>" +
-          '<div class="form-field full"><label>正文（HTML）</label><textarea id="f-content" class="f-input mono" rows="12" placeholder="支持 h2/p/ul/pre 等 HTML">' + esc(d.content || "") + "</textarea></div>" +
+          richEditorHtml(d.content || "") +
           '<div class="form-actions">' +
             '<button type="button" class="admin-btn" id="f-cancel">取消</button>' +
             '<button type="submit" class="empty-action">保存</button>' +
@@ -193,14 +234,94 @@ window.Admin = (function () {
       "</div>";
 
     $("#f-cancel").addEventListener("click", function () { renderList(); });
+    bindRichEditor();
     $("#admin-form").addEventListener("submit", function (e) {
       e.preventDefault();
       doSave();
     });
   }
 
+  function bindRichEditor() {
+    var editor = $("#f-content-editor");
+    var source = $("#f-content-source");
+    var toolbar = $("#editor-toolbar");
+    var savedRange = null;
+
+    function rememberSelection() {
+      var selection = window.getSelection();
+      if (selection && selection.rangeCount && editor.contains(selection.anchorNode)) {
+        savedRange = selection.getRangeAt(0).cloneRange();
+      }
+    }
+
+    function restoreSelection() {
+      if (!savedRange) { editor.focus(); return; }
+      var selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(savedRange);
+    }
+
+    function run(command, value) {
+      restoreSelection();
+      document.execCommand(command, false, value || null);
+      rememberSelection();
+      editor.focus();
+    }
+
+    function setMode(mode) {
+      var visual = mode === "visual";
+      if (visual) {
+        editor.innerHTML = editorHtml(source.value);
+      } else {
+        source.value = editor.innerHTML;
+      }
+      editor.hidden = !visual;
+      toolbar.hidden = !visual;
+      source.hidden = visual;
+      document.querySelectorAll("[data-editor-mode]").forEach(function (button) {
+        var active = button.getAttribute("data-editor-mode") === mode;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-pressed", active);
+      });
+    }
+
+    editor.addEventListener("keyup", rememberSelection);
+    editor.addEventListener("mouseup", rememberSelection);
+    editor.addEventListener("input", rememberSelection);
+
+    toolbar.querySelectorAll("button").forEach(function (button) {
+      button.addEventListener("mousedown", function (event) { event.preventDefault(); });
+    });
+    toolbar.querySelectorAll("[data-editor-cmd]").forEach(function (button) {
+      button.addEventListener("click", function () { run(button.getAttribute("data-editor-cmd")); });
+    });
+    toolbar.querySelectorAll("[data-editor-block]").forEach(function (button) {
+      button.addEventListener("click", function () { run("formatBlock", button.getAttribute("data-editor-block")); });
+    });
+    $("#editor-format").addEventListener("mousedown", rememberSelection);
+    $("#editor-format").addEventListener("change", function (event) {
+      run("formatBlock", event.target.value);
+      event.target.value = "p";
+    });
+    $("#editor-link").addEventListener("click", function () {
+      var url = prompt("请输入链接地址（https://…）");
+      if (url && /^(https?:\/\/|mailto:)/i.test(url.trim())) run("createLink", url.trim());
+    });
+    document.querySelectorAll("[data-editor-mode]").forEach(function (button) {
+      button.addEventListener("click", function () { setMode(button.getAttribute("data-editor-mode")); });
+    });
+    setMode("visual");
+  }
+
   function formField(label, inner) {
     return '<div class="form-field"><label>' + label + "</label>" + inner + "</div>";
+  }
+
+  function readEditorContent() {
+    var source = $("#f-content-source");
+    var editor = $("#f-content-editor");
+    var raw = source && !source.hidden ? source.value : (editor ? editor.innerHTML : "");
+    return editorHtml(raw).trim();
   }
 
   function readForm() {
@@ -218,30 +339,35 @@ window.Admin = (function () {
       views: parseInt($("#f-views").value, 10) || 0,
       readTime: $("#f-readTime").value.trim(),
       featured: $("#f-featured").checked,
-      content: $("#f-content").value
+      content: readEditorContent()
     };
   }
 
   async function doSave() {
     var data = readForm();
     if (!data.title) { msg("标题不能为空"); return; }
+    var submit = $('#admin-form button[type="submit"]');
+    if (submit) { submit.disabled = true; submit.textContent = "保存中…"; }
     try {
       if (editing) {
         await window.CloudSource.callAdmin("update", pwd, { id: editing._id || editing.id, data: data });
       } else {
         await window.CloudSource.callAdmin("create", pwd, { data: data });
       }
-      // 保存成功 → 让公开页刷新数据并回到首页
-      if (window.App && window.App.refresh) window.App.refresh();
+      if (window.App && window.App.refreshData) await window.App.refreshData();
+      editing = null;
+      await loadList("内容已保存，前台数据已同步。");
     } catch (e) {
       msg(e.message || "保存失败");
+      if (submit) { submit.disabled = false; submit.textContent = "保存"; }
     }
   }
 
   async function doRemove(id) {
     try {
       await window.CloudSource.callAdmin("remove", pwd, { id: id });
-      if (window.App && window.App.refresh) window.App.refresh();
+      if (window.App && window.App.refreshData) await window.App.refreshData();
+      await loadList("内容已删除，你仍停留在管理后台。");
     } catch (e) {
       msg(e.message || "删除失败");
     }
