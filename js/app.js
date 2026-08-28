@@ -46,6 +46,40 @@
       .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
+  /* 后台正文允许少量排版标签，其他标签和危险属性一律剥离 */
+  function safeContent(html, fallback) {
+    if (!html) return "<p>" + esc(fallback || "") + "</p>";
+    var template = document.createElement("template");
+    template.innerHTML = String(html);
+    var allowed = {
+      P: 1, H2: 1, H3: 1, H4: 1, UL: 1, OL: 1, LI: 1,
+      STRONG: 1, EM: 1, CODE: 1, PRE: 1, BLOCKQUOTE: 1,
+      A: 1, BR: 1, DIV: 1, SPAN: 1
+    };
+    Array.prototype.slice.call(template.content.querySelectorAll("*")).forEach(function (el) {
+      if (!allowed[el.tagName]) {
+        el.replaceWith(document.createTextNode(el.textContent || ""));
+        return;
+      }
+      var originalClass = el.className || "";
+      var originalHref = el.getAttribute("href") || "";
+      var originalTitle = el.getAttribute("title") || "";
+      Array.prototype.slice.call(el.attributes).forEach(function (attr) { el.removeAttribute(attr.name); });
+      if (el.tagName === "DIV" && /^(callout (tip|warn))$/.test(originalClass)) {
+        el.className = originalClass;
+      }
+      if (el.tagName === "A" && /^(https?:|mailto:|#)/i.test(originalHref)) {
+        el.setAttribute("href", originalHref);
+        if (originalTitle) el.setAttribute("title", originalTitle);
+        if (/^https?:/i.test(originalHref)) {
+          el.setAttribute("target", "_blank");
+          el.setAttribute("rel", "noopener noreferrer");
+        }
+      }
+    });
+    return template.innerHTML;
+  }
+
   function debounce(fn, ms) {
     var t;
     return function () {
@@ -130,7 +164,9 @@
   }
   function favStarHtml(id) {
     var on = isFav(id);
-    return '<button class="fav-btn' + (on ? " on" : "") + '" data-fav="' + esc(id) + '" aria-label="收藏">' + starSvg(on) + "</button>";
+    var label = on ? "取消收藏" : "收藏";
+    return '<button class="fav-btn' + (on ? " on" : "") + '" data-fav="' + esc(id) +
+      '" aria-label="' + label + '" aria-pressed="' + on + '">' + starSvg(on) + "</button>";
   }
 
   function cardHtml(d) {
@@ -145,7 +181,7 @@
     return (
       '<article class="res-card fade-up" data-id="' + esc(d.id) + '">' +
         '<div class="card-top">' + typeBadge + favStarHtml(d.id) + "</div>" +
-        '<h3 class="card-title">' + esc(d.title) + "</h3>" +
+        '<h3 class="card-title"><a class="card-link" href="#/detail/' + esc(d.id) + '">' + esc(d.title) + "</a></h3>" +
         '<p class="card-summary">' + esc(d.summary) + "</p>" +
         '<div class="card-tags">' + tags + "</div>" +
         '<div class="card-foot">' +
@@ -177,7 +213,7 @@
     return ['all', 'project', 'blog'].map(function (v) {
       var label = v === "all" ? "全部" : (v === "project" ? "项目" : "博客");
       var active = (currentFixedType || state.type) === v ? " active" : "";
-      return '<button class="type-seg-btn' + active + '" data-type="' + v + '">' + label + "</button>";
+      return '<button class="type-seg-btn' + active + '" data-type="' + v + '" aria-pressed="' + (active ? "true" : "false") + '">' + label + "</button>";
     }).join("");
   }
   function selectHtml(key, label, options, current) {
@@ -189,7 +225,8 @@
   }
   function tagChipsHtml() {
     var chips = ALL_TAGS.map(function (t) {
-      return '<button class="tag-chip' + (state.tags[t] ? " active" : "") + '" data-tag="' + esc(t) + '">' + esc(t) + "</button>";
+      var active = !!state.tags[t];
+      return '<button class="tag-chip' + (active ? " active" : "") + '" data-tag="' + esc(t) + '" aria-pressed="' + active + '">' + esc(t) + "</button>";
     });
     return '<div class="tag-row"><span class="tag-label">标签</span>' + chips.join("") + "</div>";
   }
@@ -220,7 +257,7 @@
     if (!box) return;
     var list = filterData();
     box.innerHTML =
-      '<div class="result-meta"><span class="result-count">共 <strong>' + list.length + "</strong> 条内容</span></div>" +
+      '<div class="result-meta"><span class="result-count" role="status" aria-live="polite">共 <strong>' + list.length + "</strong> 条内容</span></div>" +
       (list.length
         ? '<div class="card-grid">' + list.map(cardHtml).join("") + "</div>"
         : emptyHtml("没有找到相关内容", "换个关键词，或调整一下筛选条件试试，说不定有惊喜。"));
@@ -230,11 +267,15 @@
   function syncControlsUI() {
     // 更新分段按钮高亮
     $all(".type-seg-btn").forEach(function (b) {
-      b.classList.toggle("active", b.getAttribute("data-type") === (currentFixedType || state.type));
+      var active = b.getAttribute("data-type") === (currentFixedType || state.type);
+      b.classList.toggle("active", active);
+      b.setAttribute("aria-pressed", active);
     });
     // 更新标签 chip 高亮
     $all(".tag-chip").forEach(function (c) {
-      c.classList.toggle("active", !!state.tags[c.getAttribute("data-tag")]);
+      var active = !!state.tags[c.getAttribute("data-tag")];
+      c.classList.toggle("active", active);
+      c.setAttribute("aria-pressed", active);
     });
   }
 
@@ -293,6 +334,8 @@
         var id = btn.getAttribute("data-fav");
         var nowFav = toggleFav(id);
         btn.classList.toggle("on", nowFav);
+        btn.setAttribute("aria-pressed", nowFav);
+        btn.setAttribute("aria-label", nowFav ? "取消收藏" : "收藏");
         var svg = btn.querySelector("svg");
         if (svg) svg.setAttribute("fill", nowFav ? "var(--fav)" : "none");
         btn.classList.remove("pop"); void btn.offsetWidth; btn.classList.add("pop");
@@ -308,10 +351,11 @@
       });
     });
     $all(".res-card", scope).forEach(function (card) {
-      card.addEventListener("click", function (e) {
-        if (e.target.closest(".fav-btn")) return;
+      function openCard(e) {
+        if (e.target.closest(".fav-btn, .card-link")) return;
         location.hash = "#/detail/" + card.getAttribute("data-id");
-      });
+      }
+      card.addEventListener("click", openCard);
     });
   }
 
@@ -322,11 +366,11 @@
   function miniItemHtml(d) {
     var meta = d.type === "blog" && d.readTime ? esc(d.date) + " · " + esc(d.readTime) : esc(d.date);
     return (
-      '<div class="mini-item" data-id="' + esc(d.id) + '">' +
+      '<a class="mini-item" data-id="' + esc(d.id) + '" href="#/detail/' + esc(d.id) + '" aria-label="查看：' + esc(d.title) + '">' +
         '<span class="dot"></span>' +
         '<div class="mi-body"><div class="mi-title">' + esc(d.title) + "</div>" +
         '<div class="mi-meta">' + meta + "</div></div>" +
-      "</div>"
+      "</a>"
     );
   }
 
@@ -340,12 +384,12 @@
 
     var featuredHtml = featured.map(function (d) {
       return (
-        '<div class="featured-item" data-id="' + esc(d.id) + '">' +
+        '<a class="featured-item" data-id="' + esc(d.id) + '" href="#/detail/' + esc(d.id) + '" aria-label="查看：' + esc(d.title) + '">' +
           '<span class="fi-icon">◇</span>' +
           '<div class="fi-body"><div class="fi-title">' + esc(d.title) + "</div>" +
           '<div class="fi-meta">' + esc(d.domain) + " · " + esc(d.difficulty) + "</div></div>" +
           (isFav(d.id) ? '<span class="fi-fav">★</span>' : "") +
-        "</div>"
+        "</a>"
       );
     }).join("");
 
@@ -362,6 +406,8 @@
             ["LLM 智能体搭建", "自定义工作流编排", "AI 应用轻量化部署", "自动化效率工具开发", "大模型落地问题排查与优化"]
               .map(function (s) { return '<span class="skill-tag">' + s + "</span>"; }).join("") +
           "</div></div>" +
+          '<div class="intro-actions"><a class="primary-action" href="#/projects">查看项目 <span aria-hidden="true">→</span></a>' +
+            '<a class="secondary-action" href="#/blog">阅读技术博客</a></div>' +
         "</section>" +
 
         '<section class="bento-card bento-featured">' +
@@ -406,9 +452,10 @@
 
   function bindBento() {
     $all(".mini-item, .featured-item", $("#app")).forEach(function (it) {
-      it.addEventListener("click", function () {
+      function openItem() {
         location.hash = "#/detail/" + it.getAttribute("data-id");
-      });
+      }
+      it.addEventListener("click", openItem);
     });
   }
 
@@ -453,7 +500,7 @@
             '<span class="dm-fav">' + favStarHtml(d.id) + "<span>收藏</span></span>" +
           "</div>" +
         "</div>" +
-        '<div class="article-body">' + (d.content || "<p>" + esc(d.summary) + "</p>") + "</div>" +
+        '<div class="article-body">' + safeContent(d.content, d.summary) + "</div>" +
         '<div class="article-foot">' +
           (d.tags || []).map(function (t) {
             return '<span class="ctag" style="background:var(--accent-gray);color:var(--text-muted);padding:4px 11px;border-radius:6px;font-size:12px">#' + esc(t) + "</span>";
@@ -466,6 +513,8 @@
       favBtn.addEventListener("click", function () {
         var nowFav = toggleFav(d.id);
         favBtn.classList.toggle("on", nowFav);
+        favBtn.setAttribute("aria-pressed", nowFav);
+        favBtn.setAttribute("aria-label", nowFav ? "取消收藏" : "收藏");
         var svg = favBtn.querySelector("svg");
         if (svg) svg.setAttribute("fill", nowFav ? "var(--fav)" : "none");
         favBtn.classList.remove("pop"); void favBtn.offsetWidth; favBtn.classList.add("pop");
@@ -512,7 +561,19 @@
       if (view === "detail") active = (detailType === "blog" ? r === "blog" : r === "projects");
       else active = (r === view);
       a.classList.toggle("active", active);
+      if (active) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
     });
+
+    var pageTitle = "老叶子 · Agent 应用工程师";
+    if (view === "projects") pageTitle = "项目作品 · " + pageTitle;
+    else if (view === "blog") pageTitle = "技术博客 · " + pageTitle;
+    else if (view === "favorites") pageTitle = "我的收藏 · " + pageTitle;
+    else if (view === "detail") {
+      var detail = findById(parts[1]);
+      if (detail) pageTitle = detail.title + " · 老叶子";
+    } else if (view === "admin") pageTitle = "内容管理 · 老叶子";
+    document.title = pageTitle;
 
     closeMenu();
 
@@ -541,6 +602,8 @@
     }
 
     window.scrollTo({ top: 0, behavior: "auto" });
+    var app = $("#app");
+    if (app) window.setTimeout(function () { app.focus({ preventScroll: true }); }, 0);
   }
 
   /* ---------- 移动端菜单 ---------- */
@@ -571,11 +634,12 @@
     ALL_TAGS = rebuildTags(arr);
   }
   async function loadRemoteData() {
-    if (!window.CloudSource || !window.CloudSource.readEnabled()) return;
+    if (!window.CloudSource || !window.CloudSource.readEnabled()) return false;
     try {
       var remote = await window.CloudSource.fetchContent();
-      if (remote && remote.length) applyRemoteData(remote);
+      if (remote && remote.length) { applyRemoteData(remote); return true; }
     } catch (e) { /* 保持本地数据 */ }
+    return false;
   }
 
   /* ---------- 初始化 ---------- */
@@ -584,8 +648,8 @@
     window.addEventListener("hashchange", route);
     $("#nav-toggle").addEventListener("click", toggleMenu);
     $all(".nav-link").forEach(function (a) { a.addEventListener("click", closeMenu); });
-    await loadRemoteData();
     route();
+    if (await loadRemoteData()) route();
   }
 
   /* 暴露给管理页：保存/删除后刷新数据并回首页 */

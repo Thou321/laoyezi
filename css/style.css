@@ -14,11 +14,11 @@
 
   /* 中性色 */
   --bg: #ffffff;
-  --bg-soft: #fafbfc;
-  --border: #e6eaec;
-  --border-strong: #d8dee1;
+  --bg-soft: #f6f8f9;
+  --border: #dfe5e8;
+  --border-strong: #cbd5da;
   --text: #3a4145;
-  --text-muted: #8b949a;
+  --text-muted: #657178;
   --title: #121518;
 
   /* 功能色 */
@@ -55,12 +55,21 @@ body {
   font-size: 15px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-image:
+    radial-gradient(circle at 12% -10%, rgba(42, 95, 122, .08), transparent 28rem),
+    radial-gradient(circle at 92% 18%, rgba(91, 155, 196, .06), transparent 24rem);
+  background-attachment: fixed;
 }
 
 a { color: inherit; text-decoration: none; }
 button { font-family: inherit; cursor: pointer; border: none; background: none; }
 ul, ol { list-style: none; }
 img { max-width: 100%; display: block; }
+
+:focus-visible {
+  outline: 3px solid rgba(42, 95, 122, .32);
+  outline-offset: 3px;
+}
 
 /* ============================ 顶部导航 ============================ */
 .site-header {
@@ -70,7 +79,8 @@ img { max-width: 100%; display: block; }
   background: rgba(255, 255, 255, .86);
   backdrop-filter: saturate(180%) blur(14px);
   -webkit-backdrop-filter: saturate(180%) blur(14px);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(216, 225, 229, .86);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .7);
 }
 
 .header-inner {
@@ -190,6 +200,16 @@ img { max-width: 100%; display: block; }
   position: relative;
   overflow: hidden;
 }
+.bento-card::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(42, 95, 122, .22), transparent);
+  opacity: 0;
+  transition: opacity .22s;
+}
+.bento-card:hover::after { opacity: 1; }
 .bento-card:hover { box-shadow: var(--shadow-md); border-color: var(--border-strong); }
 
 .bento-card.is-link { cursor: pointer; }
@@ -231,6 +251,23 @@ img { max-width: 100%; display: block; }
   border-radius: 20px;
   font-weight: 500;
 }
+
+.intro-actions { display: flex; align-items: center; gap: 12px; margin-top: 24px; flex-wrap: wrap; }
+.primary-action, .secondary-action {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  font-weight: 650;
+  transition: transform .18s, background .18s, border-color .18s;
+}
+.primary-action { color: #fff; background: var(--primary); box-shadow: 0 6px 18px rgba(42, 95, 122, .18); }
+.primary-action:hover { background: var(--primary-deep); transform: translateY(-1px); }
+.secondary-action { color: var(--primary); border: 1px solid var(--border-strong); background: rgba(255, 255, 255, .64); }
+.secondary-action:hover { border-color: var(--primary); background: var(--primary-soft); }
 
 /* 精选项目卡 */
 .bento-featured { grid-column: span 2; }
@@ -455,6 +492,11 @@ img { max-width: 100%; display: block; }
   position: relative;
 }
 .res-card:hover { box-shadow: var(--shadow-md); border-color: var(--border-strong); transform: translateY(-3px); }
+.card-link:focus-visible, .mini-item:focus-visible, .featured-item:focus-visible {
+  outline: 3px solid rgba(42, 95, 122, .3);
+  outline-offset: 2px;
+}
+.card-link { border-radius: 4px; }
 
 .res-card .card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 
@@ -600,6 +642,7 @@ img { max-width: 100%; display: block; }
 .detail-head .detail-meta .fav-btn { width: 34px; height: 34px; }
 
 .article-body { margin-top: 26px; font-size: 15px; color: var(--text); line-height: 1.85; }
+.article-body { max-width: 76ch; }
 .article-body h2 {
   font-size: 19px;
   font-weight: 700;
@@ -673,6 +716,11 @@ img { max-width: 100%; display: block; }
 }
 .pop { animation: pop .3s ease; }
 
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
 /* ============================ 响应式 ============================ */
 @media (max-width: 1000px) {
   .card-grid { grid-template-columns: repeat(2, 1fr); }
@@ -721,12 +769,24 @@ img { max-width: 100%; display: block; }
   .type-seg button { flex: 1; }
   .filter-select { flex: 1 1 45%; }
   .filter-select select { width: 100%; }
+  .tag-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin-right: -14px;
+    padding-right: 14px;
+    scrollbar-width: thin;
+  }
+  .tag-chip { flex: 0 0 auto; }
+
+  .res-card .card-foot { align-items: flex-start; gap: 10px; flex-direction: column; }
+  .res-card .card-foot .foot-left { flex-wrap: wrap; }
 
   .detail-wrap { padding: 24px 18px; }
   .detail-head .detail-title { font-size: 21px; }
   .detail-head .detail-meta .dm-fav { margin-left: 0; width: 100%; }
 
   .page-title { font-size: 22px; }
+  .intro-actions > a { flex: 1 1 140px; }
 }
 
 @media (max-width: 380px) {
