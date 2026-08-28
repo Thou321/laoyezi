@@ -1,0 +1,7 @@
+{
+  "name": "admin",
+  "version": "1.0.0",
+  "description": "老叶子站点内容管理云函数（REST 直连 PostgreSQL，无需 node-sdk）",
+  "main": "index.js",
+  "dependencies": {}
+}
