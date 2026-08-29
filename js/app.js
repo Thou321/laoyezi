@@ -623,6 +623,27 @@
   }
 
   /* ---------- 云端数据加载（失败回退本地 data.js） ---------- */
+  var REMOTE_CACHE_KEY = "laoyezi.remote-content.v1";
+  var configuredCacheHours = Number((window.SITE_CONFIG || {}).contentCacheHours);
+  var REMOTE_CACHE_TTL = (configuredCacheHours > 0 ? configuredCacheHours : 6) * 60 * 60 * 1000;
+
+  function readRemoteCache(allowExpired) {
+    try {
+      var cached = JSON.parse(localStorage.getItem(REMOTE_CACHE_KEY) || "null");
+      if (!cached || !Array.isArray(cached.data) || !cached.savedAt) return null;
+      if (!allowExpired && Date.now() - cached.savedAt >= REMOTE_CACHE_TTL) return null;
+      return cached.data;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function writeRemoteCache(data) {
+    try {
+      localStorage.setItem(REMOTE_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), data: data }));
+    } catch (e) { /* 隐私模式或容量不足时继续使用在线数据 */ }
+  }
+
   function rebuildTags(arr) {
     var s = {};
     arr.forEach(function (d) { (d.tags || []).forEach(function (t) { s[t] = 1; }); });
@@ -634,12 +655,26 @@
     window.DATA = arr;
     ALL_TAGS = rebuildTags(arr);
   }
-  async function loadRemoteData() {
+  async function loadRemoteData(options) {
+    options = options || {};
     if (!window.CloudSource || !window.CloudSource.readEnabled()) return false;
+
+    if (!options.force) {
+      var cached = readRemoteCache(false);
+      if (cached) { applyRemoteData(cached); return true; }
+    }
+
     try {
       var remote = await window.CloudSource.fetchContent();
-      if (Array.isArray(remote)) { applyRemoteData(remote); return true; }
-    } catch (e) { /* 保持本地数据 */ }
+      if (Array.isArray(remote)) {
+        applyRemoteData(remote);
+        writeRemoteCache(remote);
+        return true;
+      }
+    } catch (e) { /* 尝试使用过期缓存 */ }
+
+    var stale = readRemoteCache(true);
+    if (stale) { applyRemoteData(stale); return true; }
     return false;
   }
 
@@ -655,10 +690,10 @@
 
   /* 暴露给管理页：保存/删除后刷新数据并回首页 */
   window.App = {
-    refreshData: loadRemoteData,
+    refreshData: function () { return loadRemoteData({ force: true }); },
     sanitizeContent: safeContent,
     refresh: async function () {
-      await loadRemoteData();
+      await loadRemoteData({ force: true });
       location.hash = "#/home";
       route();
     }
